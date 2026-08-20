@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bridge Structural Health Monitoring (SHM) - Digital Twin Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .glow-green { box-shadow: 0 0 20px rgba(34, 197, 94, 0.35); }
+    .glow-red { box-shadow: 0 0 25px rgba(239, 68, 68, 0.45); }
+    .pulse-warning { animation: pulseRed 1.5s infinite; }
+    @keyframes pulseRed {
+      0%, 100% { opacity: 1; border-color: rgba(239, 68, 68, 0.9); }
+      50% { opacity: 0.6; border-color: rgba(239, 68, 68, 0.3); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+      <div class="p-2.5 bg-blue-600/20 border border-blue-500/30 rounded-xl text-blue-400">
+        <i data-lucide="activity" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <h1 class="text-lg md:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+          Bridge SHM Digital Twin
+          <span class="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20 font-mono">v1.2-Live</span>
+        </h1>
+        <p class="text-xs text-slate-400">ESP32-S3 + MPU9250 MEMS FFT Vibration & Condition Analyzer</p>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="flex items-center flex-wrap gap-3">
+      <div class="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
+        <span class="text-xs text-slate-400 font-medium">Mode:</span>
+        <button id="btnSim" onclick="toggleSimulation()" class="px-2.5 py-1 text-xs font-semibold rounded bg-indigo-600 text-white transition hover:bg-indigo-500">
+          Simulation: <span id="simStateText">RUNNING</span>
+        </button>
+        <button id="btnSimToggleFault" onclick="toggleFaultInjection()" class="px-2 py-1 text-xs font-medium rounded bg-slate-700 hover:bg-slate-600 text-slate-200">
+          Inject Damage
+        </button>
+      </div>
+
+      <button id="btnSerial" onclick="connectSerial()" class="flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-lg shadow-emerald-900/30">
+        <i data-lucide="usb" class="w-4 h-4"></i>
+        <span id="serialBtnText">Connect ESP32 (Serial)</span>
+      </button>
+
+      <button onclick="exportCSV()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+        <i data-lucide="download" class="w-4 h-4"></i> Export Data
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Grid -->
+  <main class="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full space-y-6">
+
+    <!-- Status Banner & KPI Row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      
+      <!-- Bridge Health Card -->
+      <div id="healthCard" class="lg:col-span-2 p-5 rounded-2xl bg-slate-900 border border-emerald-500/40 glow-green transition-all duration-300 flex items-center justify-between">
+        <div>
+          <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Structural Health Status</span>
+          <div class="flex items-center gap-3 mt-1">
+            <span id="statusIndicator" class="w-4 h-4 rounded-full bg-emerald-500 animate-ping"></span>
+            <h2 id="statusText" class="text-2xl md:text-3xl font-extrabold text-emerald-400 tracking-wide">HEALTHY</h2>
+          </div>
+          <p id="statusDesc" class="text-xs text-slate-400 mt-2 font-mono">Dominant frequency shift within normal bounds (< 5.0%)</p>
+        </div>
+        <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700">
+          <i id="statusIcon" data-lucide="shield-check" class="w-10 h-10 text-emerald-400"></i>
+        </div>
+      </div>
+
+      <!-- Dominant Frequency -->
+      <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+        <div class="flex justify-between items-start">
+          <span class="text-xs uppercase font-semibold text-slate-400">Dominant Frequency</span>
+          <i data-lucide="activity" class="w-4 h-4 text-blue-400"></i>
+        </div>
+        <div class="mt-2">
+          <div class="text-3xl font-bold font-mono text-white flex items-baseline gap-1">
+            <span id="valFreq">8.20</span>
+            <span class="text-sm font-normal text-slate-400">Hz</span>
+          </div>
+          <div class="text-xs mt-1 font-mono text-slate-400 flex items-center gap-1.5">
+            <span>Base: <span id="valBaseFreq">8.20</span> Hz</span> | 
+            <span id="valShift" class="text-emerald-400">Δ 0.0%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RMS Acceleration -->
+      <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+        <div class="flex justify-between items-start">
+          <span class="text-xs uppercase font-semibold text-slate-400">RMS Acceleration</span>
+          <i data-lucide="gauge" class="w-4 h-4 text-purple-400"></i>
+        </div>
+        <div class="mt-2">
+          <div class="text-3xl font-bold font-mono text-white flex items-baseline gap-1">
+            <span id="valRMS">0.021</span>
+            <span class="text-sm font-normal text-slate-400">g</span>
+          </div>
+          <div class="text-xs mt-1 font-mono text-slate-400">
+            Peak: <span id="valPeak" class="text-slate-200">0.035 g</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orientation & Tilt -->
+      <div class="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+        <div class="flex justify-between items-start">
+          <span class="text-xs uppercase font-semibold text-slate-400">Tilt & Event</span>
+          <i data-lucide="compass" class="w-4 h-4 text-amber-400"></i>
+        </div>
+        <div class="mt-2">
+          <div class="text-sm font-mono text-slate-200 space-y-0.5">
+            <div>Roll: <span id="valRoll" class="text-white font-bold">0.1°</span> | Pitch: <span id="valPitch" class="text-white font-bold">-0.2°</span></div>
+            <div class="flex items-center gap-2 pt-1">
+              <span class="text-xs text-slate-400">SW-420:</span>
+              <span id="valVib" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">NORMAL</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Middle Row: Digital Twin 2.5D Physical Model & Real-time FFT -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- 2.5D Digital Twin Model Representation Canvas -->
+      <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="box" class="w-5 h-5 text-indigo-400"></i>
+            <h3 class="font-bold text-sm text-slate-200">Physical Bridge Digital Twin Representation</h3>
+          </div>
+          <span class="text-xs px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono">Synchronized State</span>
+        </div>
+        
+        <div class="relative flex-1 min-h-[280px] bg-slate-950/80 rounded-xl border border-slate-800/80 flex items-center justify-center overflow-hidden p-2">
+          <canvas id="twinCanvas" class="w-full h-full"></canvas>
+          <div class="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-700 text-[11px] font-mono text-slate-300">
+            <span>Sensor Node #1: </span><span id="nodeStatusBadge" class="text-emerald-400 font-bold">ACTIVE (Z-Axis @ 200 Hz)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-Time Frequency Spectrum (FFT) -->
+      <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="bar-chart-2" class="w-5 h-5 text-blue-400"></i>
+            <h3 class="font-bold text-sm text-slate-200">FFT Frequency Spectrum (0 – 100 Hz)</h3>
+          </div>
+          <span class="text-xs text-slate-400 font-mono">N=1024 Hamming</span>
+        </div>
+        <div class="relative flex-1 min-h-[280px]">
+          <canvas id="fftChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Row: Time Domain Waveform & Event Logs -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Time Domain Waveform -->
+      <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="trending-up" class="w-5 h-5 text-purple-400"></i>
+            <h3 class="font-bold text-sm text-slate-200">Time-Domain Dynamic Vibration Signal (a_z)</h3>
+          </div>
+          <span class="text-xs text-slate-400 font-mono">Sampling: 200 Hz (5ms)</span>
+        </div>
+        <div class="relative h-60">
+          <canvas id="timeChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Real-time Event Log -->
+      <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="terminal" class="w-5 h-5 text-slate-400"></i>
+            <h3 class="font-bold text-sm text-slate-200">Telemetry & Diagnostic Feed</h3>
+          </div>
+          <button onclick="clearLogs()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
+        </div>
+        <div id="logContainer" class="flex-1 bg-slate-950 rounded-xl border border-slate-800 p-3 font-mono text-xs overflow-y-auto max-h-60 space-y-1 text-slate-300">
+          <div class="text-slate-500">[System] SHM Digital Twin Telemetry Initialized.</div>
+          <div class="text-emerald-400">[Baseline] Baseline RMS: 0.0210 g | Dominant Frequency: 8.20 Hz</div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-slate-900/60 border-t border-slate-800 px-6 py-4 text-center text-xs text-slate-500">
+    <p>A Low-Cost IoT-Enabled Bridge Structural Health Monitoring System Using MEMS Vibration Sensing, FFT-Based Analysis, and Digital Twin Visualization</p>
+    <p class="mt-1 font-mono text-slate-400">Developed by MD. Rakib Hassan Dipu &copy; 2026 | Open Source Academic Project</p>
+  </footer>
+
+  <!-- Dashboard JavaScript Logic -->
+  <script>
+    // State Variables
+    let isSimulating = true;
+    let isDamagedState = false;
+    let baselineFreq = 8.20;
+    let baselineRMS = 0.0210;
+    let currentFreq = 8.20;
+    let currentRMS = 0.0210;
+    let currentPeak = 0.035;
+    let currentRoll = 0.1;
+    let currentPitch = -0.2;
+    let vibrationEvent = false;
+    let telemetryHistory = [];
+
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Setup Charts
+    const timeCtx = document.getElementById('timeChart').getContext('2d');
+    const timeLabels = Array.from({length: 60}, (_, i) => `${(i*20)}ms`);
+    const timeData = Array.from({length: 60}, () => 0);
+    const timeChart = new Chart(timeCtx, {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [{
+          label: 'Z-Axis Acceleration (g)',
+          data: timeData,
+          borderColor: '#a855f7',
+          backgroundColor: 'rgba(168, 85, 247, 0.1)',
+          borderWidth: 1.5,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { display: false, grid: { color: '#1e293b' } },
+          y: { 
+            min: -0.15, max: 0.15,
+            grid: { color: '#1e293b' },
+            ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } }
+          }
+        },
+        plugins: { legend: { display: false } },
+        animation: false
+      }
+    });
+
+    const fftCtx = document.getElementById('fftChart').getContext('2d');
+    const fftFreqBins = Array.from({length: 50}, (_, i) => (i * 2).toFixed(1));
+    const fftMagData = Array.from({length: 50}, () => 0.001);
+    const fftChart = new Chart(fftCtx, {
+      type: 'bar',
+      data: {
+        labels: fftFreqBins,
+        datasets: [{
+          label: 'Magnitude (g)',
+          data: fftMagData,
+          backgroundColor: '#3b82f6',
+          borderRadius: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { 
+            title: { display: true, text: 'Frequency (Hz)', color: '#64748b', font: { size: 10 } },
+            grid: { display: false },
+            ticks: { color: '#64748b', maxTicksLimit: 10, font: { family: 'JetBrains Mono', size: 10 } }
+          },
+          y: { 
+            title: { display: true, text: 'Magnitude', color: '#64748b', font: { size: 10 } },
+            min: 0, max: 0.08,
+            grid: { color: '#1e293b' },
+            ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } }
+          }
+        },
+        plugins: { legend: { display: false } },
+        animation: false
+      }
+    });
+
+    // Digital Twin Bridge Canvas Rendering
+    const canvas = document.getElementById('twinCanvas');
+    const ctx = canvas.getContext('2d');
+    let bridgePhase = 0;
+
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function drawBridgeDigitalTwin() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const w = canvas.width;
+      const h = canvas.height;
+      const centerY = h * 0.65;
+      const span = w * 0.8;
+      const startX = (w - span) / 2;
+      const endX = startX + span;
+
+      bridgePhase += isDamagedState ? 0.25 : 0.08;
+      const vibAmp = isDamagedState ? 12 : 3;
+      const defl = Math.sin(bridgePhase) * vibAmp;
+
+      // Color Theme
+      const statusColor = isDamagedState ? '#ef4444' : '#22c55e';
+      const deckColor = isDamagedState ? 'rgba(239, 68, 68, 0.8)' : 'rgba(59, 130, 246, 0.8)';
+
+      // Water / Ground
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, centerY + 40, w, h);
+
+      // Bridge Piers
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(startX - 15, centerY, 30, h - centerY);
+      ctx.fillRect(endX - 15, centerY, 30, h - centerY);
+      ctx.fillRect((startX + endX)/2 - 15, centerY, 30, h - centerY);
+
+      // Deck with deflection
+      ctx.beginPath();
+      ctx.moveTo(startX, centerY);
+      ctx.quadraticCurveTo((startX + endX)/2, centerY + defl, endX, centerY);
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = deckColor;
+      ctx.stroke();
+
+      // Truss Arch
+      ctx.beginPath();
+      const trussTopY = centerY - 70 + (defl * 0.5);
+      ctx.moveTo(startX, centerY);
+      ctx.quadraticCurveTo((startX + endX)/2, trussTopY - 40, endX, centerY);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#475569';
+      ctx.stroke();
+
+      // Truss Vertical Cables & Nodes
+      const numNodes = 7;
+      for (let i = 1; i < numNodes; i++) {
+        const nx = startX + (span / numNodes) * i;
+        const progress = i / numNodes;
+        const archY = trussTopY - 40 + 4 * 40 * Math.pow(progress - 0.5, 2);
+        const deckNodeY = centerY + Math.sin(progress * Math.PI) * defl;
+
+        // Cable
+        ctx.beginPath();
+        ctx.moveTo(nx, archY);
+        ctx.lineTo(nx, deckNodeY);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#334155';
+        ctx.stroke();
+
+        // Node
+        ctx.beginPath();
+        ctx.arc(nx, deckNodeY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = (i === 4) ? statusColor : '#64748b';
+        ctx.fill();
+      }
+
+      // Sensor Node Highlight (Center)
+      const midX = (startX + endX) / 2;
+      const midY = centerY + defl;
+
+      ctx.beginPath();
+      ctx.arc(midX, midY, 9, 0, Math.PI * 2);
+      ctx.fillStyle = statusColor;
+      ctx.shadowColor = statusColor;
+      ctx.shadowBlur = 15;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Ripple effect on damage
+      if (isDamagedState) {
+        ctx.beginPath();
+        ctx.arc(midX, midY, 15 + Math.sin(bridgePhase * 2) * 8, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      requestAnimationFrame(drawBridgeDigitalTwin);
+    }
+    requestAnimationFrame(drawBridgeDigitalTwin);
+
+    // Telemetry Update Loop (Simulation)
+    setInterval(() => {
+      if (!isSimulating) return;
+
+      const t = Date.now() / 1000;
+      let targetFreq = isDamagedState ? 7.50 : 8.20;
+      let targetRMS = isDamagedState ? 0.0380 : 0.0210;
+
+      currentFreq = targetFreq + (Math.random() - 0.5) * 0.08;
+      currentRMS = targetRMS + (Math.random() - 0.5) * 0.002;
+      currentPeak = currentRMS * (isDamagedState ? 2.4 : 1.7);
+      currentRoll = (Math.random() - 0.5) * (isDamagedState ? 2.8 : 0.4);
+      currentPitch = (Math.random() - 0.5) * (isDamagedState ? 2.5 : 0.4);
+      vibrationEvent = isDamagedState && (Math.random() > 0.4);
+
+      updateDashboardUI();
+
+      // Update Waveform Data
+      timeData.shift();
+      const signalVal = (Math.sin(2 * Math.PI * currentFreq * t) * currentPeak) + ((Math.random() - 0.5) * 0.015);
+      timeData.push(signalVal);
+      timeChart.update();
+
+      // Update FFT Spectrum
+      for (let i = 0; i < fftFreqBins.length; i++) {
+        const binF = parseFloat(fftFreqBins[i]);
+        const dist = Math.abs(binF - currentFreq);
+        let mag = Math.exp(- (dist * dist) / 3.0) * (isDamagedState ? 0.065 : 0.045);
+        mag += Math.random() * 0.003;
+        fftMagData[i] = mag;
+      }
+      fftChart.update();
+
+    }, 200);
+
+    function updateDashboardUI() {
+      const shiftPercent = ((baselineFreq - currentFreq) / baselineFreq) * 100;
+      const isDamaged = isDamagedState || (shiftPercent > 5.0) || (currentRMS > baselineRMS * 1.3) || (Math.abs(currentRoll) > 2.0);
+
+      document.getElementById('valFreq').textContent = currentFreq.toFixed(2);
+      document.getElementById('valBaseFreq').textContent = baselineFreq.toFixed(2);
+      document.getElementById('valShift').textContent = `Δ ${shiftPercent.toFixed(1)}%`;
+      document.getElementById('valRMS').textContent = currentRMS.toFixed(3);
+      document.getElementById('valPeak').textContent = `${currentPeak.toFixed(3)} g`;
+      document.getElementById('valRoll').textContent = `${currentRoll.toFixed(1)}°`;
+      document.getElementById('valPitch').textContent = `${currentPitch.toFixed(1)}°`;
+
+      const vibElem = document.getElementById('valVib');
+      if (vibrationEvent) {
+        vibElem.textContent = 'DETECTED';
+        vibElem.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+      } else {
+        vibElem.textContent = 'NORMAL';
+        vibElem.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700';
+      }
+
+      const card = document.getElementById('healthCard');
+      const statusText = document.getElementById('statusText');
+      const statusDesc = document.getElementById('statusDesc');
+      const statusInd = document.getElementById('statusIndicator');
+      const statusIcon = document.getElementById('statusIcon');
+      const nodeBadge = document.getElementById('nodeStatusBadge');
+
+      if (isDamaged) {
+        card.className = 'lg:col-span-2 p-5 rounded-2xl bg-slate-900 border border-red-500/80 glow-red pulse-warning transition-all duration-300 flex items-center justify-between';
+        statusText.textContent = 'POSSIBLE DAMAGE';
+        statusText.className = 'text-2xl md:text-3xl font-extrabold text-red-400 tracking-wide';
+        statusDesc.textContent = `ALERT: Natural Frequency Shift = ${shiftPercent.toFixed(1)}% | RMS Rise Detected`;
+        statusInd.className = 'w-4 h-4 rounded-full bg-red-500 animate-ping';
+        statusIcon.setAttribute('data-lucide', 'alert-triangle');
+        statusIcon.className = 'w-10 h-10 text-red-400';
+        nodeBadge.textContent = 'ANOMALY DETECTED (WARNING)';
+        nodeBadge.className = 'text-red-400 font-bold';
+      } else {
+        card.className = 'lg:col-span-2 p-5 rounded-2xl bg-slate-900 border border-emerald-500/40 glow-green transition-all duration-300 flex items-center justify-between';
+        statusText.textContent = 'HEALTHY';
+        statusText.className = 'text-2xl md:text-3xl font-extrabold text-emerald-400 tracking-wide';
+        statusDesc.textContent = 'Dominant frequency and vibration energy within normal nominal limits';
+        statusInd.className = 'w-4 h-4 rounded-full bg-emerald-500 animate-ping';
+        statusIcon.setAttribute('data-lucide', 'shield-check');
+        statusIcon.className = 'w-10 h-10 text-emerald-400';
+        nodeBadge.textContent = 'ACTIVE (Z-Axis @ 200 Hz)';
+        nodeBadge.className = 'text-emerald-400 font-bold';
+      }
+      lucide.createIcons();
+
+      // Append periodic log
+      if (Math.random() < 0.05) {
+        addLog(`[Telemetry] Freq: ${currentFreq.toFixed(2)} Hz | RMS: ${currentRMS.toFixed(4)} g | Status: ${isDamaged ? 'POSSIBLE DAMAGE' : 'HEALTHY'}`);
+      }
+    }
+
+    function toggleSimulation() {
+      isSimulating = !isSimulating;
+      document.getElementById('simStateText').textContent = isSimulating ? 'RUNNING' : 'PAUSED';
+    }
+
+    function toggleFaultInjection() {
+      isDamagedState = !isDamagedState;
+      const btn = document.getElementById('btnSimToggleFault');
+      if (isDamagedState) {
+        btn.textContent = 'Restore Healthy';
+        btn.className = 'px-2 py-1 text-xs font-medium rounded bg-red-600 hover:bg-red-500 text-white';
+        addLog('[SIMULATION] Structural Damage Injected: Stiffness reduced, dominant frequency dropped to ~7.5 Hz');
+      } else {
+        btn.textContent = 'Inject Damage';
+        btn.className = 'px-2 py-1 text-xs font-medium rounded bg-slate-700 hover:bg-slate-600 text-slate-200';
+        addLog('[SIMULATION] Structure restored to nominal healthy condition (8.2 Hz baseline)');
+      }
+    }
+
+    function addLog(msg) {
+      const container = document.getElementById('logContainer');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.innerHTML = `<span class="text-slate-500">${time}</span> ${msg}`;
+      container.prepend(div);
+      if (container.children.length > 50) container.removeChild(container.lastChild);
+    }
+
+    function clearLogs() {
+      document.getElementById('logContainer').innerHTML = '<div class="text-slate-500">[System] Logs cleared.</div>';
+    }
+
+    // Web Serial API Integration for Hardware ESP32-S3
+    async function connectSerial() {
+      if (!("serial" in navigator)) {
+        alert("Web Serial API is not supported in this browser. Please use Google Chrome or Microsoft Edge.");
+        return;
+      }
+
+      try {
+        const port = await navigator.requestPort();
+        await port.open({ baudRate: 115200 });
+        isSimulating = false;
+        document.getElementById('simStateText').textContent = 'DISABLED (HARDWARE LIVE)';
+        document.getElementById('serialBtnText').textContent = 'ESP32 Connected';
+        addLog('[Hardware] Connected to ESP32-S3 Serial Port @ 115200 Baud.');
+
+        const textDecoder = new TextDecoderStream();
+        const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+        const reader = textDecoder.readable.getReader();
+
+        let lineBuffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            lineBuffer += value;
+            let lines = lineBuffer.split('\n');
+            lineBuffer = lines.pop();
+
+            for (let line of lines) {
+              line = line.trim();
+              if (line.startsWith('Dominant Frequency :')) {
+                currentFreq = parseFloat(line.split(':')[1]);
+              } else if (line.startsWith('RMS :')) {
+                currentRMS = parseFloat(line.split(':')[1]);
+              } else if (line.startsWith('Peak :')) {
+                currentPeak = parseFloat(line.split(':')[1]);
+              } else if (line.startsWith('Roll :')) {
+                currentRoll = parseFloat(line.split(':')[1]);
+              } else if (line.startsWith('Pitch :')) {
+                currentPitch = parseFloat(line.split(':')[1]);
+              } else if (line.startsWith('Bridge Status :')) {
+                isDamagedState = line.includes('DAMAGE');
+              }
+              addLog(line);
+              updateDashboardUI();
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Serial connection error: ", err);
+        addLog(`[Error] Serial Port: ${err.message}`);
+      }
+    }
+
+    function exportCSV() {
+      const csvContent = "data:text/csv;charset=utf-8,Timestamp,Dominant_Freq_Hz,RMS_g,Peak_g,Roll_deg,Pitch_deg,Status\n" +
+        `${new Date().toISOString()},${currentFreq},${currentRMS},${currentPeak},${currentRoll},${currentPitch},${isDamagedState ? 'DAMAGE' : 'HEALTHY'}\n`;
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `shm_bridge_telemetry_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+</body>
+</html>

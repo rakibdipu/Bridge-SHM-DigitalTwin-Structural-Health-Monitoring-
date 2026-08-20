@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this project, hardware design, or dataset in your research, please cite it as below."
+title: "A Low-Cost IoT-Enabled Bridge Structural Health Monitoring System Using MEMS Vibration Sensing, FFT-Based Analysis, and Digital Twin Visualization"
+authors:
+  - family-names: "Dipu"
+    given-names: "MD. Rakib Hassan"
+    affiliation: "Department of IoT and Robotics Engineering, University of Frontier Technology, Bangladesh"
+keywords:
+  - "Structural Health Monitoring (SHM)"
+  - "Digital Twin"
+  - "Internet of Things (IoT)"
+  - "ESP32-S3"
+  - "MPU9250"
+  - "Fast Fourier Transform (FFT)"
+  - "MEMS Vibration Sensing"
+  - "Edge Computing"
+date-released: 2026-08-19
+license: MIT

@@ -1,0 +1,39 @@
+# Prerequisites & OS Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*$*
+
+# Arduino / PlatformIO Build Artifacts
+build/
+.pio/
+*.hex
+*.bin
+*.elf
+*.o
+*.d
+*.map
+
+# Python / Web Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+env/
+.env
+
+# Large Raw Archives & Temporary Files
+*.zip
+*.tar.gz
+*.7z
+*.rar
+SHM-20260720T100506Z-1-001.zip
+Bridge_SHM_last/
+Bridge_SHM__1_/
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
