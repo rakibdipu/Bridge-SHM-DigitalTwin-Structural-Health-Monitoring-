@@ -6,13 +6,15 @@ authors:
     given-names: "MD. Rakib Hassan"
     affiliation: "Department of IoT and Robotics Engineering, University of Frontier Technology, Bangladesh"
 keywords:
-  - "Structural Health Monitoring (SHM)"
+  - "Structural Health Monitoring"
   - "Digital Twin"
-  - "Internet of Things (IoT)"
+  - "Internet of Things"
   - "ESP32-S3"
   - "MPU9250"
-  - "Fast Fourier Transform (FFT)"
+  - "Fast Fourier Transform"
   - "MEMS Vibration Sensing"
   - "Edge Computing"
+  - "Bridge Monitoring"
 date-released: 2026-08-19
 license: MIT
+repository-code: "https://github.com/rakibdipu/Bridge-SHM-DigitalTwin-Structural-Health-Monitoring-"
